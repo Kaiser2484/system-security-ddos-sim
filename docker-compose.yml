@@ -1,0 +1,163 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# docker-compose.yml
+# DDoS Simulation – Phase 1/2/3  (switch via NGINX_CONF variable)
+#
+# Services:
+#   1. target_web    – Flask + Gunicorn backend (the attack target)
+#   2. nginx_proxy   – Reverse proxy (defense config controlled by NGINX_CONF)
+#   3. nginx_exporter– Sidecar: exposes nginx metrics for Prometheus
+#   4. prometheus    – Metrics collection & storage
+#   5. grafana       – Visualization & dashboards
+#
+# Phase switching:
+#   Phase 1 & 2 (no defense):  NGINX_CONF=nginx.conf          docker-compose up -d
+#   Phase 3     (defended):    NGINX_CONF=nginx_defended.conf  docker-compose up -d
+#
+# Default (in .env or below): NGINX_CONF=nginx_defended.conf  (Phase 3 active)
+# ─────────────────────────────────────────────────────────────────────────────
+
+networks:
+  ddos_net:
+    driver: bridge
+    # Explicit subnet for predictable IP range (helpful for firewall rules later)
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+
+volumes:
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+services:
+
+  # ── 1. Target Web Application ─────────────────────────────────────────────
+  target_web:
+    build:
+      context: ./target_web
+      dockerfile: Dockerfile
+    container_name: target_web
+    restart: unless-stopped
+    networks:
+      - ddos_net
+    environment:
+      - PORT=5000
+      # Gunicorn will log to stdout (captured by Docker)
+    expose:
+      - "5000"          # Only accessible inside ddos_net (nginx proxies it)
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    labels:
+      - "com.ddos-sim.role=target"
+      - "com.ddos-sim.phase=1"
+
+  # ── 2. Nginx Reverse Proxy ────────────────────────────────────────────────
+  # To switch defense mode, set NGINX_CONF before running:
+  #   Phase 1/2 (no defense):  set NGINX_CONF=nginx.conf
+  #   Phase 3   (defended):    set NGINX_CONF=nginx_defended.conf  ← current
+  nginx_proxy:
+    image: nginx:1.25-alpine
+    container_name: nginx_proxy
+    restart: unless-stopped
+    networks:
+      - ddos_net
+    ports:
+      - "80:80"         # ← Public-facing entry point for all traffic
+    volumes:
+      - ./nginx/${NGINX_CONF:-nginx_defended.conf}:/etc/nginx/nginx.conf:ro
+    depends_on:
+      target_web:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1/nginx_status"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    labels:
+      - "com.ddos-sim.role=proxy"
+      - "com.ddos-sim.phase=3"
+      - "com.ddos-sim.nginx-config=${NGINX_CONF:-nginx_defended.conf}"
+
+  # ── 3. Nginx Prometheus Exporter (sidecar) ────────────────────────────────
+  nginx_exporter:
+    image: nginx/nginx-prometheus-exporter:1.1
+    container_name: nginx_exporter
+    restart: unless-stopped
+    networks:
+      - ddos_net
+    command:
+      - "--nginx.scrape-uri=http://nginx_proxy/nginx_status"
+    expose:
+      - "9113"
+    depends_on:
+      nginx_proxy:
+        condition: service_healthy
+    labels:
+      - "com.ddos-sim.role=exporter"
+
+  # ── 4. Prometheus ─────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: prometheus
+    restart: unless-stopped
+    networks:
+      - ddos_net
+    ports:
+      - "9090:9090"     # Prometheus UI (optional, for direct query access)
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=7d"
+      - "--web.enable-lifecycle"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    labels:
+      - "com.ddos-sim.role=monitoring"
+
+  # ── 5. Grafana ────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: grafana
+    restart: unless-stopped
+    networks:
+      - ddos_net
+    ports:
+      - "3000:3000"     # Grafana UI → http://localhost:3000
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    environment:
+      # Default credentials (change in production!)
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      # Disable first-run password change prompt
+      - GF_SECURITY_ALLOW_EMBEDDING=true
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      # Auto-install no extra plugins needed for this dashboard
+      - GF_INSTALL_PLUGINS=
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "com.ddos-sim.role=visualization"

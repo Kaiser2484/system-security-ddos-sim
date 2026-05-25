@@ -1,0 +1,42 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# prometheus/prometheus.yml
+# Prometheus scrape configuration for the DDoS simulation project
+# ─────────────────────────────────────────────────────────────────────────────
+
+global:
+  scrape_interval:     5s   # How often to scrape targets
+  evaluation_interval: 5s   # How often to evaluate rules
+  scrape_timeout:      4s   # Timeout for each scrape
+
+  # Labels added to all time series from this Prometheus instance
+  external_labels:
+    project: 'ddos-sim'
+    phase:   'base-infrastructure'
+
+# ── Scrape configurations ─────────────────────────────────────────────────────
+scrape_configs:
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  # Target web application (Flask + prometheus_flask_exporter)
+  - job_name: 'target_web'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['target_web:5000']
+        labels:
+          service: 'target_web'
+          environment: 'phase1'
+
+  # Nginx metrics via nginx-prometheus-exporter
+  - job_name: 'nginx'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['nginx_exporter:9113']
+        labels:
+          service: 'nginx'
+          environment: 'phase1'
