@@ -200,7 +200,7 @@ port 3000           │                     │          :3000         │  │
 | Phase 1   | Base Infrastructure                        | ✅ Hoàn thành |
 | Phase 2   | DDoS Attack Simulation                     | ✅ Hoàn thành |
 | Phase 3   | Defense Mechanisms (Rate Limit + Conn Limit)| ✅ Hoàn thành |
-| Phase 4   | Comparison & Analysis                      | 🔜 Sắp tới   |
+| Phase 4   | Comparison & Analysis (Benchmark + Report) | ✅ Hoàn thành |
 
 ---
 
@@ -361,3 +361,86 @@ Mở **http://localhost:3000** → Dashboard: **DDoS Sim – Phase 1 & 2: Attack
              status: 200=9833  503=2814  TIMEOUT=200
   [16:30:03] ⚡ ATTACK [HTTP Flood] workers=200 sent=15,203 rps=1267 err%=28.1% ...
 ```
+
+---
+
+## 📊 Giai đoạn 4: So sánh & Phân tích
+
+### Tổng quan
+
+Phase 4 tự động hóa toàn bộ quy trình benchmarking và tạo báo cáo HTML trực quan:
+
+| Script | Chức năng |
+|--------|----------|
+| `scripts/benchmark.py` | Chạy attack ở Phase 2 & 3, query Prometheus, lưu JSON |
+| `scripts/generate_report.py` | Đọc JSON, vẽ biểu đồ, xuất `reports/report.html` |
+
+### Cài đặt dependencies (một lần)
+
+```bash
+pip install -r requirements.txt
+```
+
+### Quy trình chạy Phase 4
+
+**Bước 1** – Đảm bảo Docker stack đang chạy:
+```bash
+docker-compose up -d
+```
+
+**Bước 2** – Chạy benchmark tự động (chuyển phase, tấn công, ghi metrics):
+```bash
+# Mặc định: 200 workers × 45 giây
+python scripts/benchmark.py
+
+# Tùy chỉnh:
+python scripts/benchmark.py --workers 150 --duration 60 --baseline 20
+```
+
+Script sẽ tự động:
+1. Thu thập baseline 20s (không tấn công)
+2. Chuyển sang Phase 2 (no defense) → HTTP Flood → ghi metrics
+3. Đợi phục hồi
+4. Chuyển sang Phase 3 (defended) → cùng attack → ghi metrics
+5. Lưu `reports/benchmark_results.json`
+
+**Bước 3** – Tạo báo cáo HTML:
+```bash
+python scripts/generate_report.py
+# Output: reports/report.html
+
+# Mở báo cáo:
+start reports\report.html        # Windows
+```
+
+### Nội dung báo cáo HTML
+
+- 🔢 **KPI Cards**: Peak RPS, p99 Latency, Defense Effectiveness %
+- 📋 **Bảng so sánh** đầy đủ 9 metrics (Baseline / Phase 2 / Phase 3)
+- 📈 **5 biểu đồ**:
+  - Request Rate Comparison (bar)
+  - Latency Percentile Comparison (grouped bar)
+  - RPS Over Time (time-series)
+  - Nginx Connections Over Time
+  - Phase 3 Traffic Distribution (pie: passed vs blocked)
+- 📝 **Kết luận tự động** dựa trên dữ liệu thực
+
+### Kết quả mẫu
+
+| Metric | Phase 2 (No Defense) | Phase 3 (Defended) |
+|--------|---------------------|--------------------|
+| Peak RPS (tổng) | ~450 req/s | ~450 req/s |
+| Peak RPS đến Flask | ~450 req/s | **~20 req/s** ✅ |
+| Peak p99 Latency | >1000ms | <50ms ✅ |
+| 5xx Errors | Có | **0** ✅ |
+| Blocked (429) | 0 | **~95%** ✅ |
+
+### Files Phase 4
+
+| File | Mô tả |
+|------|-------|
+| `scripts/benchmark.py` | Benchmark orchestrator |
+| `scripts/generate_report.py` | HTML report generator |
+| `requirements.txt` | Host dependencies (matplotlib, numpy) |
+| `reports/benchmark_results.json` | Raw metrics data (auto-generated) |
+| `reports/report.html` | Final comparison report (auto-generated) |
