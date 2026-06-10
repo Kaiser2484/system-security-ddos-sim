@@ -214,8 +214,8 @@ def main() -> None:
         description="Legitimate traffic simulator for DDoS baseline testing."
     )
     parser.add_argument(
-        "--url", default="http://localhost/api/data",
-        help="Target URL (default: http://localhost/api/data)"
+        "--url", default="http://127.0.0.1/api/data",
+        help="Target URL (default: http://127.0.0.1/api/data)"
     )
     parser.add_argument(
         "--rate", type=float, default=7.0,

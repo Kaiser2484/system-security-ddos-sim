@@ -52,8 +52,8 @@ RESULTS_FILE = REPORTS_DIR / "benchmark_results.json"
 ENV_FILE    = ROOT / ".env"
 
 # ── URLs ──────────────────────────────────────────────────────────────────────
-PROMETHEUS_URL = "http://localhost:9090"
-TARGET_URL     = "http://localhost/api/data"
+PROMETHEUS_URL = "http://127.0.0.1:9090"
+TARGET_URL     = "http://127.0.0.1/api/data"
 
 # ── ANSI colors ───────────────────────────────────────────────────────────────
 RESET  = "\033[0m"

