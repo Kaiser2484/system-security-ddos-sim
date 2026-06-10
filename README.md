@@ -34,9 +34,9 @@ pip install -r requirements.txt
 
 | URL | Mô tả | Login |
 |-----|-------|-------|
-| http://localhost | API target | — |
-| http://localhost:3000 | Grafana dashboard | admin / admin |
-| http://localhost:9090 | Prometheus | — |
+| <http://localhost> | API target | — |
+| <http://localhost:3000> | Grafana dashboard | admin / admin |
+| <http://localhost:9090> | Prometheus | — |
 
 ---
 
@@ -105,6 +105,7 @@ python scripts/run_attack.py --mode slowloris --connections 150 --duration 60
 | `client_max_body_size` | 1m | POST Flood |
 
 **Chuyển đổi phase:**
+
 ```bash
 python scripts/switch_phase.py 3   # bật defense
 python scripts/switch_phase.py 1   # tắt defense (baseline)
