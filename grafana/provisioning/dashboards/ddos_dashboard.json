@@ -490,8 +490,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "clamp_min(rate(nginx_http_requests_total[15s]) - sum(rate(flask_http_request_total[15s])), 0)",
-          "legendFormat": "Blocked/s (Nginx − Flask)",
+          "expr": "clamp_min(rate(nginx_http_requests_total[15s]) - scalar(sum(rate(flask_http_request_total[15s]))), 0)",
+          "legendFormat": "Blocked/s",
           "refId": "A"
         }
       ]
@@ -523,7 +523,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "clamp_min(rate(nginx_http_requests_total[15s]) - sum(rate(flask_http_request_total[15s])), 0) / rate(nginx_http_requests_total[15s]) * 100",
+          "expr": "clamp_min(rate(nginx_http_requests_total[15s]) - scalar(sum(rate(flask_http_request_total[15s]))), 0) / rate(nginx_http_requests_total[15s]) * 100",
           "legendFormat": "Blocked %",
           "refId": "A"
         }
@@ -567,7 +567,7 @@
         },
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "clamp_min(rate(nginx_http_requests_total[15s]) - sum(rate(flask_http_request_total[15s])), 0)",
+          "expr": "clamp_min(rate(nginx_http_requests_total[15s]) - scalar(sum(rate(flask_http_request_total[15s]))), 0)",
           "legendFormat": "Blocked by Nginx (429)",
           "refId": "B"
         },
